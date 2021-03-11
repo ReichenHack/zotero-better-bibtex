@@ -26,6 +26,7 @@ dependencies:
   lokijs: 1.5.11
   node-eta: 0.9.0
   number-to-words: 1.2.4
+  p-queue: 6.6.2
   parse5: 6.0.1
   permutater: 1.0.2
   pug: 3.0.2
@@ -3908,7 +3909,6 @@ packages:
     resolution:
       integrity: sha512-zAKMgGXUim0Jyd6CXK9lraBnD3H5yPGBPPOkC23a2BG6hsm4Zu6OQSjQuEtV0BHDf4aKHcUFvJiGRrFuW3MG8g==
   /p-finally/1.0.0:
-    dev: true
     engines:
       node: '>=4'
     resolution:
@@ -3975,6 +3975,23 @@ packages:
       node: '>=6'
     resolution:
       integrity: sha512-y3b8Kpd8OAN444hxfBbFfj1FY/RjtTd8tzYwhUqNYXx0fXx2iX4maP4Qr6qhIKbQXI02wTLAda4fYUbDagTUFw==
+  /p-queue/6.6.2:
+    dependencies:
+      eventemitter3: 4.0.7
+      p-timeout: 3.2.0
+    dev: false
+    engines:
+      node: '>=8'
+    resolution:
+      integrity: sha512-RwFpb72c/BhQLEXIZ5K2e+AhgNVmIejGlTgiB9MzZ0e93GRvqZ7uSi0dvRF7/XIXDeNkra2fNHBxTyPDGySpjQ==
+  /p-timeout/3.2.0:
+    dependencies:
+      p-finally: 1.0.0
+    dev: false
+    engines:
+      node: '>=8'
+    resolution:
+      integrity: sha512-rhIwUycgwwKcP9yTOOFK/AKsAopjjCakVqLHePO3CC6Mir1Z99xT+R63jZxAT5lFZLa2inS5h+ZS2GvR99/FBg==
   /p-try/1.0.0:
     dev: true
     engines:
@@ -5762,6 +5779,7 @@ specifiers:
   njstrace: ^1.2.1
   node-eta: ^0.9.0
   number-to-words: ^1.2.4
+  p-queue: ^6.6.2
   parse5: ^6.0.1
   pegjs: ^0.10.0
   permutater: ^1.0.2

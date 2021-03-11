@@ -21,44 +21,57 @@ import { flash } from './flash'
 
 import { override } from './prefs-meta'
 import * as translatorMetadata from '../gen/translators.json'
+import { Events } from './events'
 
-import { TaskEasy } from 'task-easy'
-
-interface Priority {
-  priority: number
-  timestamp: number
-}
+import PQueue from 'p-queue'
+import lowerBound from 'p-queue/dist/lower-bound'
+type ExportTask = () => Promise<string>
 
 type ExportScope = { type: 'items', items: any[] } | { type: 'library', id: number } | { type: 'collection', collection: any }
 type ExportJob = {
   scope?: ExportScope
   path?: string
   preferences?: Record<string, boolean | number | string>
-  started?: number
+
+  priority: number
+  started: number
   canceled?: boolean
 }
 
 class Queue {
-  private queue: TaskEasy<Priority>
-
+  private readonly _queue: Array<ExportJob & { run: ExportTask }> // eslint-disable-line @typescript-eslint/array-type
   constructor() {
-    this.queue = new TaskEasy((t1: Priority, t2: Priority) => t1.priority === t2.priority ? t1.timestamp < t2.timestamp : t1.priority > t2.priority)
+    this._queue = []
   }
 
-  public async schedule(task: TaskEasy.Task<string>, translatorID: string, displayOptions: Record<string, boolean>, job: ExportJob) {
-    job.started = Date.now()
-    if (job.path) {
-      for (const scheduled of (this.queue as any).tasks) {
-        if (scheduled.started < job.started && scheduled.args && scheduled.args.length === 3) { // eslint-disable-line no-magic-numbers
-          const scheduledJob = (scheduled.args[2] as ExportJob)
-          if (scheduledJob.path && scheduledJob.path === job.path) {
-            log.debug(job.started, 'cancels export to', job.path, 'started at', scheduledJob.started)
-            scheduledJob.canceled = true
-          }
-        }
+  public enqueue(run: ExportTask, options: ExportJob) {
+    const entry = {
+      ...options,
+      run,
+    }
+
+    if (options.path) {
+      for (const queued of this._queue) {
+        if (queued.path === options.path && options.started >= queued.started) queued.canceled = true
       }
     }
-    return await this.queue.schedule(task, [translatorID, displayOptions, job], { priority: 1, timestamp: job.started })
+
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    const index = lowerBound(this._queue, entry, (a: Readonly<ExportJob>, b: Readonly<ExportJob>) => b.priority! - a.priority!)
+    this._queue.splice(index, 0, entry)
+  }
+
+  public dequeue() {
+    return this._queue.shift()?.run
+  }
+
+  public get size() {
+    return this._queue.length
+  }
+
+  public filter(options) {
+    const filters = Object.entries(options)
+    return this._queue.filter(queued => filters.every(([k, v]) => queued[k] === v)).map(queued => queued.run)
   }
 }
 
@@ -88,7 +101,10 @@ export const Translators = new class { // eslint-disable-line @typescript-eslint
   public byLabel: Record<string, ITranslatorHeader>
   public itemType: { note: number, attachment: number }
 
-  private queue = new Queue
+  private queue = new PQueue({
+    queueClass: Queue,
+    concurrency: Preference.workersMax,
+  })
 
   public workers: { total: number, running: Set<number>, disabled: boolean, startup: number } = {
     total: 0,
@@ -99,6 +115,9 @@ export const Translators = new class { // eslint-disable-line @typescript-eslint
 
   constructor() {
     Object.assign(this, translatorMetadata)
+    Events.on('preference-changed', pref => {
+      if (pref === 'workersMax') this.queue.concurrency = Preference.workersMax
+    })
   }
 
   public async init() {
@@ -203,13 +222,13 @@ export const Translators = new class { // eslint-disable-line @typescript-eslint
     return translation.newItems
   }
 
-  public async exportItemsByQueuedWorker(translatorID: string, displayOptions: Record<string, boolean>, job: ExportJob) {
-    if (this.workers.running.size > Preference.workersMax) {
-      return this.queue.schedule(this.exportItemsByWorker.bind(this), translatorID, displayOptions, job)
+  public async exportItemsByQueuedWorker(translatorID: string, displayOptions: Record<string, boolean>, job: Partial<ExportJob>) {
+    job = {
+      priority: job.path ? 1 : 2, // prioritize in-memory exports as they're likely used in an interactive setting
+      started: Date.now(),
+      ...job,
     }
-    else {
-      return this.exportItemsByWorker(translatorID, displayOptions, job)
-    }
+    return await this.queue.add(this.exportItemsByWorker.bind(this, translatorID, displayOptions, job), job)
   }
 
   public async exportItemsByWorker(translatorID: string, displayOptions: Record<string, boolean>, job: ExportJob) {
